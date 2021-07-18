@@ -1,0 +1,1277 @@
+---
+title: "BloodPressurePredict.Rmd"
+author: "WONG Yuen Wah"
+date: "16 July 2021"
+output:
+  word_document: 
+    fig_height: 4
+    fig_width: 5
+  pdf_document: default
+---
+# Blood Pressure Prediction without Medical Device
+
+> This project amis to predict Blood Pressure without medical device. 
+>
+
+## Why Blood Pressure is Important
+
+> Nearly half of adults in the United States (108 million, or 45%) have hypertension (also called high blood pressure (HBP)) (ie., systolic blood pressure ≥ 130 mm Hg).  
+>
+> Blood Pressure is an important indicator for predicting health.   
+>
+> Long-term high blood pressure is a major risk factor for stroke, heart disease, heart failure, vision loss, chronic kidney disease, and dementia.  
+>
+
+## Existing Mean to Measure Blood Pressure and the Limitation
+
+> To keep track a peron blood pressure, blood pressure guage can be used. However, it required professionals assistance, and most people may not have a blood pressure guage on hands.  
+>
+> Some people do not even know that they have high blood pressure issue.  
+>
+
+## AI Algorithm to Instantly Estimate Blood Pressure
+
+> Have a blood pressure AI algorithms to instantly estimated their blood pressure with simple parameters, such age, BMI, Hours of Sleep, etc. could provide an early alert and attention on their health. If there is double, they should go for a proper checkup and medical follow-up. 
+>
+
+```{r echo=FALSE, results="hide", include=FALSE}
+knitr::opts_chunk$set(message=FALSE)
+
+if(!require(readr)) install.packages("readr", repos = "https://cran.us.r-project.org")
+if(!require(tidyverse)) install.packages("tidyverse", repos = "https://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "https://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "https://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("corrplot", repos = "https://cran.us.r-project.org")
+if(!require(RColorBrewer)) install.packages("RColorBrewer", repos = "https://cran.us.r-project.org")
+if(!require(PerformanceAnalytics)) install.packages("PerformanceAnalytics", repos = "https://cran.us.r-project.org")
+if(!require(keras)) install.packages("keras", repos = "https://cran.us.r-project.org")
+if(!require(MLmetric)) install.packages("MLmetric", repos = "https://cran.us.r-project.org")
+
+library(readr)
+
+```
+
+```{r echo=FALSE, results="hide", include=FALSE}
+
+#setwd("~/Documents/Bachcode/Course/Data Science edx/nhanes homework")
+#NHANES <- read_csv("NHANES.csv")
+NHANES <- read.csv(file = 'https://raw.githubusercontent.com/Shreyas3108/house-price-prediction/master/kc_house_data.csv')
+```
+
+## The Dataset
+
+> Dataset is from National Health and Nutrition Examination Survey of US (NHANES) 
+>
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, comment='>') 
+
+
+```
+
+
+```{r eval=FALSE, echo=FALSE}
+
+
+head(NHANES) ## take a look at the first few rows of the dataset
+
+
+NHANES[c(1,3,4,7,17,20,21,25, 50, 53,59, 76)]  ## some record are duplicated
+NHANES[c(1,4,5,6,7,8),c(1,3,4,7,17,20,21,25, 50, 53,59, 76)] ## take a look at a subset of the dataset
+
+head(NHANES)  #10,000
+
+
+```
+
+### Size of Dataset 
+
+
+```{r eval=TRUE, echo=FALSE}
+
+# Randomly keep only a record for each ID (person)
+NHANES <- NHANES %>% distinct(ID,.keep_all=TRUE)
+#head(NHANES)  #6779 unique user records now
+dim(NHANES)
+
+
+
+message <- paste("The NHANES dataset contains", dim(NHANES)[1], "unique people records.")
+write(message,stdout())
+
+message <-  paste("Each Records has", dim(NHANES)[2], "features.")
+write(message,stdout())
+
+
+NHANESfemale3065 <- NHANES %>% 
+  filter(!is.na(BMI), !is.na(BPSysAve), between(Age,18,65), Gender =="female")
+
+
+NHANESmale3065 <- NHANES %>% 
+  filter(!is.na(BMI), !is.na(BPSysAve), between(Age,18,65), Gender =="male")
+
+
+message <-  paste("Number of Adult Female Aged 18-65 with Blood Pressure and BMI Records : ", dim(NHANESfemale3065)[1])
+write(message,stdout())
+
+message <-  paste("Number of Adult Male Aged 18-65 with Blood Pressure and BMI Records : ", dim(NHANESmale3065)[1])
+write(message,stdout())
+
+
+```
+
+### More Idea about the Dataset    
+
+```{r eval=TRUE, echo=FALSE, size ='tiny'}
+
+  dplyr::glimpse(NHANES)
+
+# or glimpse(NHANES) to see all the variables in the dataset
+```
+
+
+```{r eval=TRUE, echo=FALSE}
+
+NHANES$AlcoholDay[is.na(NHANES$AlcoholDay)] <- 0
+NHANES$PhysActiveDays[is.na(NHANES$PhysActiveDays)] <- 0
+
+original_NHANES <- NHANES
+
+#Data Tidying
+library(tidyverse)
+
+#Data wrangling with dplyr
+library(dplyr)
+
+select <- dplyr::select
+
+```
+
+################################################
+# Data Visualization
+## Univaritate Statistics
+
+> Let's take a look on BMI to get a quick idea of the overall health status of population.  
+
+```{r eval=TRUE, echo=FALSE}
+library(ggplot2)
+
+set.seed(2) ## to make the horizontal position of the jitter non-random
+give.n <- function(x){
+  return(c(y = 50, label = length(x))) 
+}
+```
+
+## Boxplot 
+> Boxplot -- provide us with information on the mean/median values of the data.  
+
+```{r eval=TRUE, echo=FALSE, fig.width=4, fig.height=5}
+
+NHANES %>%
+  filter(!is.na(BMI), between(Age,18,65), between(BMI, 10,60)) %>%
+  head(NHANES, n=1000) %>%
+  ggplot(aes(x="", y=BMI)) +
+  geom_boxplot(outlier.shape=NA) + 
+  geom_jitter(width=0.3) +
+  stat_summary(geom="text", fun=quantile,
+               aes(label=sprintf("%1.1f", ..y..)),
+               position=position_nudge(x=0.5), size=4.5) +
+  annotate("text", x = c(1.5,1.5,1.5,1.5,1.5), y = c(12.5,22,26,30,60), label = c("(minimum)","(25%)","(median)","(75%)","(maximum)"),size=3)
+
+```
+
+
+> Age over 65 year old are not considered in this analysis, due to more complicated medications this group of people may have.  
+
+> The Mean BMI for adult (aged 18-65), with the 1000 samples (for a clearer view), the meam BMI is 27.9, which is considered as overweight, and is quite alarming regarding the health of the population.
+
+> Normal BMI ranging between 18.5 and 24.9. Overweight: BMI between 25 and 29.9. Obese: BMI of 30 or higher.    
+
+> The mean of BMI 27.9 implies the target population's health condition is at a concerning level. This analysis and Blood Pressure Prediction algorithm could acts as an useful trigger to people to take care of their Blood Pressure and Chronic Health.  
+
+
+## Scatter Plot
+#### Blood Pressure vs BMI
+
+> Under the same BMI, Male tends to have higher blood pressure then Female.   
+> We would separate the analysis by Genders, and would choose Female in this project.  
+
+```{r eval=TRUE, echo=FALSE, fig.width=5, fig.height=4}
+
+NHANES %>%
+  filter(!is.na(BMI), !is.na(BPSysAve), between(Age,18,65)) %>%
+  #head(NHANES, n=5000) %>%
+  ggplot(aes(x = BMI, y = BPSysAve, color = Gender)) +
+  geom_point(alpha = 0.5) + 
+  xlab("BMI") + 
+  ylab("BPSysAve (mmHg)") +
+  xlim(10,70) + 
+  ylim(80,200)
+
+#dim(NHANES)
+
+```
+
+
+## Confidence Interval
+
+> We want to see if the dataset contains the true mean of the population, by looking into the confidence interval (90%, 95%).  
+
+> Let's look into healthy group people, compare their Blood Pressure with literatures.  
+
+> Here, we assume healthy individual as being :  
+* non-smoker,  
+* without a history of diabetes,   
+* no hard drugs,  
+* no sleeping trouble,  
+* with a general health that is not considered poor, and  
+* with a BMI between 18.5 and 25.  
+
+> Besides,female group is chosen, as we have found female and male blood pressure seems behave a bit differently even under the same BMI.   
+
+```{r eval=TRUE, echo=FALSE}
+
+Healthfemale3065_NHANES <- NHANES %>%
+  filter(!is.na(Smoke100n), !is.na(BMI_WHO), !is.na(HardDrugs), !is.na(HealthGen), !is.na(SleepTrouble)) %>%
+  filter(!is.na(BPSysAve), between(Age,30,65), Gender == "female") %>% 
+  filter(Smoke100n == "Non-Smoker", Diabetes == "No", HardDrugs == "No", HealthGen != "Poor", SleepTrouble == "No", BMI_WHO == "18.5_to_24.9")
+
+#dim(Healthfemale3065_NHANES)
+```
+
+
+> To investigate the CI, we have to see if the data is normally distributed.
+
+## Histogram 
+#### Healthy Female Blood Pressure Distribution (mean = 111 mmHg)
+
+```{r eval=TRUE, echo=FALSE}
+
+Healthfemale3065_NHANES %>%
+  ggplot(aes(x=BPSysAve)) +
+  geom_histogram(bins = 25) +
+  geom_vline(aes(xintercept = mean(x=BPSysAve)), col = "red", lwd = 2) +
+  geom_text(aes(x=mean(x=BPSysAve), y=13, label=round(mean(BPSysAve),digits=0)),hjust=-0.5, size=6) +
+  ylim(0,15)
+
+
+message <- paste("The number of HEALTHY Female Aged 30 to 65 is only", nrow(Healthfemale3065_NHANES))
+write(message, stdout())
+
+```
+
+> Besides, it is quite obvious that it is not normally distributed. Long tail is quite common for health data. 
+
+
+> Let's also see the QQ Plot.  
+
+
+## QQplot 
+### Distribution of Healhty Female (18-65) Blood Pressure
+
+```{r eval=TRUE, echo=FALSE, fig.width=5, fig.height=4}
+
+Healthfemale3065_NHANES %>%
+  ggplot(aes(sample=BPSysAve))+
+  geom_qq()+
+  geom_qq_line()
+
+```
+
+> The two ends of the graph do not align well.  
+
+> We use the log2 transformation, which QQ Plot looks closer to the normal distribution.    
+
+
+### Distribution of Healthy Female (18-65) Blood Pressure (with Log2 scale)
+
+```{r eval=TRUE, echo=FALSE}
+
+Healthfemale3065_NHANES %>%
+  ggplot(aes(sample=BPSysAve %>% log2))+
+  geom_qq()+
+  geom_qq_line()
+
+```
+
+>    
+> The log2 systolic blood pressure for healthy subjects is approximately normally distributed.    
+
+
+### 90% or 95% confidence interval for the HEALTHY group
+
+> General Form of 95% Confidnece Interval  = sample statistic mean +/- 2 * stardard error
+
+```{r eval=TRUE, echo=FALSE}
+
+summary_NHANES <- Healthfemale3065_NHANES %>%
+  mutate(BPSysAveLog2 = BPSysAve %>% log2) %>%
+  summarize_at("BPSysAveLog2",
+               list(mean=~mean(.,na.rm=TRUE),
+                    sd=~sd(.,na.rm=TRUE),
+                    n=function(x) x%>%is.na%>%`!`%>%sum)) %>%
+  mutate(se=sd/sqrt(n))
+
+
+```
+
+```{r eval=TRUE, echo=FALSE}
+summary_NHANES
+message <- paste("Mean value (log2):", format(summary_NHANES$mean, digits=4))  # 6.79
+write(message, stdout())
+message <- paste("Geometric mean value (log2):", 2^summary_NHANES$mean)  # 110.5  (# 95% )
+write(message, stdout())
+message <- paste("Standard deviation (log2):", summary_NHANES$sd)  # 0.181
+write(message, stdout())
+```
+
+
+####  General Form of 95% Confidence Interval= sample statistic mean +/- 2 * stardard error
+
+
+```{r eval=TRUE, echo=FALSE}
+#General Form of 95% Confidnece Interval
+#  = sample statistic mean +/- 2*stardard error
+
+message <- paste0("95% Confidence Interval (in log2 scale): [", format(summary_NHANES$mean - 2*summary_NHANES$sd, digits=3), ";", 
+                                                           format(summary_NHANES$mean + 2*summary_NHANES$sd, digits=3), "]")
+write(message, stdout())
+# [6.4265177613329;7.14932205657843]
+
+message <- paste0("95% Confidence Interval (mmHg in original scale): [", format(2^(summary_NHANES$mean - 2*summary_NHANES$sd), digits=4), ";", 
+                                                                    format(2^(summary_NHANES$mean + 2*summary_NHANES$sd), digits=4),"]")
+write(message, stdout())
+# [86.0150832141602;141.958168536746]
+```
+
+
+####  General Form of 90% Confidence Interval= sample statistic mean +/- stardard error
+
+
+```{r eval=TRUE, echo=FALSE}
+#General Form of 90% Confidnece Interval
+#  = sample statistic mean +/- stardard error
+
+message <- paste0("90% Confidence Interval (in log2 scale): [", format(summary_NHANES$mean - summary_NHANES$sd, digits=3), ";", 
+                                                           format(summary_NHANES$mean + summary_NHANES$sd, digits=3), "]")
+write(message, stdout())
+# [6.60721883514428;6.96862098276705]
+
+message <- paste0("90% Confidence Interval (mmHg in original scale): [", format(2^(summary_NHANES$mean - summary_NHANES$sd), digits=4), ";", 
+                                                                    format(2^(summary_NHANES$mean + summary_NHANES$sd), digits=4), "]")
+write(message, stdout())
+# [97.4924663606747;125.24602295366]
+```
+
+
+> This allows us to set up the (90%) reference interval, for what we can consider to be normal blood pressure values.  
+
+> Note that in the literature a value 125 mmHg for the systolic blood pressure is typically considered to be the upper limit of healthy group in aged of 30-65. (90% CI)  
+
+> Note that in the literature a value 125 mmHg for the systolic blood pressure is typically considered to be the upper limit of normality in aged of 30-65. (95% CI)  
+
+> The dataset is reasonably representing, when considering 90% and 95% CI.  
+
+**Let's continue of analysis**
+
+## Histogram 
+#### Distribution and Mean of Blood Pressure of All Gender Adult 18-65 (=118mmHg)
+> (Remarks: Including Healthy and Unhealthy)
+
+```{r eval=TRUE, echo=FALSE}
+NHANES %>%
+  filter(!is.na(BPSysAve), between(Age,18,65)) %>%
+  #head(NHANES, n=200) %>% ## to make the visualization more clear, we take only the first 100 subjects
+  ggplot(aes(x=BPSysAve)) +
+  geom_histogram(bins = 30) +
+  geom_vline(aes(xintercept = mean(x=BPSysAve)), col = "red", lwd = 2) +
+  geom_text(aes(x=mean(x=BPSysAve)-3, y=80, label=round(mean(BPSysAve),digits=0)),hjust=-0.5, size=6)
+```
+
+## Histogram
+#### Distribution and Mean of Blood Pressure of All Gender Adult 18-29 (=113mmHg)
+
+```{r eval=TRUE, echo=FALSE}
+NHANES %>%
+  filter(!is.na(BPSysAve), between(Age,18,29)) %>%
+  #head(NHANES, n=200) %>% ## to make the visualization more clear, we take only the first 100 subjects
+  ggplot(aes(x=BPSysAve)) +
+  geom_histogram(bins = 30) +
+  geom_vline(aes(xintercept = mean(x=BPSysAve)), col = "red", lwd = 2) +
+  geom_text(aes(x=mean(x=BPSysAve)-3, y=30, label=round(mean(BPSysAve),digits=0)),hjust=-0.5, size=6)
+```
+
+## Histogram 
+#### Distribution and Mean of Blood Pressure of All Gender Aged 30-65 (=120mmHg)
+
+```{r eval=TRUE, echo=FALSE}
+NHANES %>%
+  filter(!is.na(BPSysAve), between(Age,30,65)) %>%
+  #head(NHANES, n=200) %>% ## to make the visualization more clear, we take only the first 100 subjects
+  ggplot(aes(x=BPSysAve)) +
+  geom_histogram(bins = 30) +
+  geom_vline(aes(xintercept = mean(x=BPSysAve)), col = "red", lwd = 2) +
+  geom_text(aes(x=mean(x=BPSysAve)-3, y=50, label=round(mean(BPSysAve),digits=0)),hjust=-0.5, size=6)
+```
+
+**We can see Blood Pressure is higher for aged people.**   
+
+Age        | Blood Pressure
+---------- | --------------
+18-65      |    118mmHg
+           |
+18-29      |    113mmHg
+30-65      |    120mmHg
+
+## Histogram
+#### Distribution and Mean of Blood Pressure of Male Aged 30-65 (=123mmHg)
+```{r eval=TRUE, echo=FALSE}
+NHANES %>%
+  filter(!is.na(BPSysAve), between(Age,30,65), Gender == "male") %>%
+  #head(NHANES, n=200) %>% ## to make the visualization more clear, we take only the first 100 subjects
+  ggplot(aes(x=BPSysAve)) +
+  geom_histogram(bins = 30) +
+  geom_vline(aes(xintercept = mean(x=BPSysAve)), col = "red", lwd = 2) +
+  geom_text(aes(x=mean(x=BPSysAve)-3, y=30, label=round(mean(BPSysAve),digits=0)),hjust=-0.5, size=6)
+```
+
+
+## Histogram  
+#### Distribution and Mean of Blood Pressure of Female Aged 30-65 (=117mmHg)
+```{r eval=TRUE, echo=FALSE}
+NHANES %>%
+  filter(!is.na(BPSysAve), between(Age,30,65), Gender == "female") %>%
+  #head(NHANES, n=200) %>% ## to make the visualization more clear, we take only the first 100 subjects
+  ggplot(aes(x=BPSysAve)) +
+  geom_histogram(bins = 30) +
+  geom_vline(aes(xintercept = mean(x=BPSysAve)), col = "red", lwd = 2) +
+  geom_text(aes(x=mean(x=BPSysAve)-3, y=30, label=round(mean(BPSysAve),digits=0)),hjust=-0.5, size=6)
+```
+
+## Summary
+
+Age        | Blood Pressure
+---------- | --------------
+18-65      |    118mmHg
+           |
+18-29      |    113mmHg
+30-65      |    120mmHg
+
+***
+
+Age (30-65)  | Blood Pressure
+-------------|------------------
+Male         |   123mmHg
+Female       |   117mmHg
+
+
+**Therefore, it is make sense to analyse the Blood Pressure by different Gender and Age Group.**
+
+##### Again, our aims is to predict Blood Pressure by using HANDY features of a person.  
+"Handy Features" means the parameter the user must know by themselves about their body easily. So that they can predict their blood pressure anytime and get a quick idea of their health conditions instantly.   
+
+We will focus on Female Aged 30 to 65. And see what Handy features can be used to predict blood pressure.    
+
+From the literature of human physologies, possible factor (featurers) that affect a person blood pressure would be: "Age", "Weight", "Height", "BMI", "SleepHrsNight", "PhysActiveDays", "AlcoholDay".   
+
+##### Let's see how they are related among one another and to the blood pressure.  
+
+## Female aged 30 to 65 --- Female3065 
+(including Healthy and UnHealthy)
+
+## The Correlation Heatmap -- 
+#### Explore the relationship (or the correlation) among all this parameter
+
+```{r eval=TRUE, echo=FALSE}
+library(corrplot)
+library(RColorBrewer)
+
+library(dplyr)
+select <- dplyr::select
+
+NHANES = original_NHANES 
+
+female3065 <- NHANES %>% 
+  filter(Gender == "female") %>%    #female/male , PregnantNow !="Yes"
+  filter(between(Age,30,65)) %>%
+  filter(is.na(PregnantNow)| PregnantNow != "Yes") %>%
+  select("Age", "Weight", "Height","BMI",
+         "SleepHrsNight","PhysActiveDays","AlcoholDay","BPSysAve") #%>%
+  #filter(!is.na(SleepHrsNight) & !is.na(BPSysAve) & !is.na(BMI))
+
+#dim(female3065)  #1446
+#head(female3065)
+
+message <- paste("The number of Female Aged 30 to 65 is", nrow(female3065), "(including all healthy and unhealthy).")
+write(message, stdout())
+
+select <- dplyr::select
+
+temp <- female3065 %>%
+  select(one_of("Age", "Weight", "Height","BMI",
+                                 "SleepHrsNight","PhysActiveDays","AlcoholDay","BPSysAve")) %>% as.matrix()
+#dim(temp)
+M <- cor(temp, use = "pairwise.complete.obs")  
+```
+
+### Type 1 -- color and sizes only
+```{r eval=TRUE, echo=FALSE}
+
+corrplot(M, order = "hclust", addrect = 2, type = "lower", col = brewer.pal(8, "PiYG"), tl.cex=0.8)
+```
+
+
+### Type 2 -- with parameters shown
+> The larger the parameters, the strong the relationship
+
+```{r eval=TRUE, echo=FALSE}
+corrplot(M, method = "number", tl.cex=0.8)
+```
+
+> Form the correlation table, Age is an obvious feature that affect Blood Pressure.  
+> Besides, Weigth, Height and BMI are also being significantly correlated to Blood Pressure.  
+> However, Weigth, Height and BMI are also correlated to one another by among themselves. In such case, we would only choose one of them.  
+> As BMI = Weight/Height^2. And BMI is having the highest correlation parameter with Blood Pressure. Therefore, we choose BMI.  
+
+
+
+### Type 3 -- with graph plotted
+```{r eval=TRUE, echo=FALSE}
+
+library("PerformanceAnalytics")
+chart.Correlation(temp, histogram=TRUE, pch=19)
+```
+
+
+## Deeper Look at EACH Handy Features
+
+```{r eval=TRUE, echo=FALSE}
+library(tidyverse)
+library(dslabs)
+```
+
+## Target Feature: Blood Pressure
+
+#### The Distribution in the 1446 blood pressure sample
+
+```{r eval=TRUE, echo=FALSE}
+
+message <- paste("Again, the number of Female Aged 30 to 65 is", nrow(female3065), "(including all healthy and unhealthy).")
+write(message, stdout())
+
+p <- ggplot(female3065, aes(x=BPSysAve)) +
+  geom_histogram(aes(y=..density..), binwidth = 5, colour="black", fill="white") +
+  geom_density(alpha=.2, fill="#FF6666")
+p
+
+```
+
+## 1. Age 
+```{r eval=TRUE, echo=FALSE}
+qplot(Age, BPSysAve, data = female3065, ylim=c(70,200))
+```
+
+### Let's plot for smoothing curve for a clear idea.
+> People at age of 30 is having a blood pressure of 113 mmHg. This evalates to almost 130 mmHg at the age of 65. 
+
+```{r eval=TRUE, echo=FALSE}
+
+p <- ggplot(female3065, aes(Age, BPSysAve)) +
+  geom_point() +
+  stat_smooth(span = 0.9, method.args = list(degree=2)) +
+  lims(x=c(30, 65), y =c(70,200))
+p
+```
+
+
+## 2. BMI
+> People of BMI = 25 or high is having Blood Pressure of 120 mmHg, the upper limit of healthy range.  
+
+```{r eval=TRUE, echo=FALSE}
+qplot(BMI, BPSysAve, data = female3065, ylim=c(70,200), xlim=c(15,65))
+
+p <- ggplot(female3065, aes(BMI, BPSysAve)) +
+  #geom_line() +
+  geom_point() +
+  stat_smooth(span = 0.9, method.args = list(degree=2)) +
+  lims(x=c(15, 60), y =c(70,200))
+p
+```
+
+
+## 3. SleepHrsNight
+
+> People sleeps for 4 to 9 hours are having an average value of lower Blood Pressure closed to 110 mmHg or lower.  
+> Sleeping less than 4 hours or more an 9 hours have an significant increase in the group blood pressure up to almost 125 mmHg.  
+> This is something we can't observe just from the correlation chart (or the heat map).  
+
+```{r eval=TRUE, echo=FALSE}
+qplot(factor(SleepHrsNight), BPSysAve, data = female3065, 
+      geom = c("boxplot", "jitter"), alpha = 0.001,
+      ylim =c(80,180))
+```
+
+
+## 4. PhysActiveDays
+
+> Based on the available data, increase Physical Activities does not have much effect on Blood Presure. 
+
+```{r eval=TRUE, echo=FALSE}
+
+qplot(factor(PhysActiveDays), BPSysAve, data = female3065, 
+      geom = c("boxplot", "jitter"), alpha = 0.001,
+      ylim =c(80,180))
+```
+
+
+## 5. AlcoholDay
+
+> In general, the lower the number of alcohol taken (1-2 portions per day), the lower the blood pressure.    
+
+```{r eval=TRUE, echo=FALSE}
+
+qplot(factor(AlcoholDay), BPSysAve, data = female3065, 
+      geom = c("boxplot", "jitter"), alpha = 0.001,
+      ylim =c(80,180))
+
+#table(female3065$AlcoholDay)
+```
+
+## The AI Algorithms
+
+From the analysis, Age, BMI, SleepHrsNight, AlcoholDay are found to affect blood pressure.  
+The relationship between some of these features may not in a linear relationship with blood pressure.  
+But we would still try to predict blood pressure by Multiple Regression, as a baseline approach.  
+Besides the Multiple Regression, Keras Artificial Neural Network will also be used.  
+
+#### Next we try to predict by
+**(1) Multiple Regression (a baseline approach)**  
+**(2) Keras ANN**   
+
+## (1) Multiple Regression
+
+> Multiple regression generally explains the relationship between multiple independent or predictor variables and one dependent or criterion variable. ... The multiple regression equation explained above takes the following form:   
+> y = b1 x1 + b2 x2 + … + bn xn + c.   
+> In our case:  
+> y = b1 x Age + b2 x BMI + .. + b5 x AlcoholDay + c    
+
+
+### Multiple Linear Regression
+### The purpose of a multiple linear regression is to:
+> 1.Determine the size and nature of the coefficient for each feature in explaining the dependent variable.  
+> 2.Determine the signficance or insignificance of each feature.  
+
+
+**Female Age 30-65 without NA**  
+
+```{r eval=TRUE, echo=FALSE}
+#head(female3065)
+
+female3065_nona <- female3065 %>% 
+  select("Age", "BMI", "SleepHrsNight", "PhysActiveDays", "AlcoholDay", "BPSysAve")  %>%  
+  na.omit()
+
+message <- paste("Number of Female Aged 30-65 :", dim(female3065_nona)[1])
+write(message, stdout())
+
+# keep a copy for later use
+female3065_nona_original <- female3065_nona
+
+message <- paste("A Quick Look of the Database")
+write(message, stdout())
+head(female3065_nona)
+
+```
+
+**Split the Train_Set and Test_Set by 90:10**  
+
+> The split of train or test sets are usually 60:40, 70:30, 80:20, 90:10.   
+> The choice are mostly depends on the size of the dataset, nature of application, etc.  
+> We start with the most typical split of 70:30. But with several trials, we found that 90:10 provides the best performance, it is mostly because our relatively smaller dataset size (~1300), and NN is considered as a data intensive model.  
+
+
+```{r eval=TRUE, echo=FALSE}
+
+library(caret)
+set.seed(2345)
+
+y <- female3065_nona$BPSysAve
+test_index <- createDataPartition(y, times = 1, p = 0.1, list = FALSE)
+
+
+train_set <- female3065_nona %>% slice(-test_index)
+test_set <- female3065_nona %>% slice(test_index)
+
+message <- paste("Female Aged 30-65\n-------\nTotal Size of Dataset", nrow(female3065_nona))
+write(message, stdout())
+
+message <- paste("Size of Train Set", nrow(train_set))
+write(message, stdout())
+
+message <- paste("Size of Test Set", nrow(test_set))
+write(message, stdout())
+
+```
+
+### Get the average value of Blood Pressure as a reference  
+
+```{r eval=TRUE, echo=TRUE}
+
+avg <- mean(train_set$BPSysAve)
+```
+
+```{r eval=TRUE, echo=FALSE}
+
+message <- paste("The average Blood Pressure from train set (ie.our guessing) is", format(avg, digits = 4) ,"mmHg.")
+write(message, stdout())
+
+```
+
+#### To compare performance of different models, the Root Mean Square Error (RMSE)  is used, as it is more sensitive to large error.  
+#### When compared with Test Set, the RMSE of guessing with Average is computed:  
+
+```{r eval=TRUE, echo=TRUE}
+
+RMSE_avg <- sqrt(mean((avg - test_set$BPSysAve)^2))  
+
+diff <- avg - test_set$BPSysAve
+```
+
+
+```{r eval=TRUE, echo=FALSE}
+message <- paste("\nRMSE is", format(RMSE_avg, digits = 4) ,"if Guessing with average Blood Pressure.")
+write(message, stdout())
+
+```
+## Summary of RMSE
+
+
+   Algorithms                                    |   Root Mean Square Error (RMSE)
+-------------------------------------------------|---------------------------------
+   Guess with Average                            |       15.30
+                                                 |
+
+
+**Let's see if the Multiple Regression perform better than guessing with average:**
+
+### Multiple Regression
+
+```{r eval=TRUE, echo=FALSE}
+
+fit <- lm(BPSysAve ~ Age + BMI + SleepHrsNight + PhysActiveDays + AlcoholDay, data = train_set)  
+
+summary(fit)
+
+```
+
+> Intercept is 75.90219.  
+> From the Estimate, the larger the number (Coefficient) of the more significants of the features.  
+> In the above summary, 1 year older means 0.58 mmHg blood pressure higher.    
+> 1 Alcohol portion means means 0.64 mmHg blood pressure higher.   
+
+```{r eval=TRUE, echo=FALSE}
+
+fit$coef
+
+# Let's predict the Blood Pressure, and Work out the RMSE
+y_pred <- fit$coef[1] + 
+  fit$coef[2]*test_set$Age + 
+  fit$coef[3]*test_set$BMI +
+  fit$coef[4]*test_set$SleepHrsNight +
+  fit$coef[5]*test_set$PhysActiveDays +
+  fit$coef[6]*test_set$AlcoholDay
+
+```
+
+```{r eval=TRUE, echo=FALSE}
+
+# The RMSE
+RMSE_mr1 <- sqrt(mean((y_pred - test_set$BPSysAve)^2))
+
+
+message <- paste("\nRMSE of Multiple Regression (with Age, BMI, SleepHrsNight, PhysActiveDays, AlcoholDay) is: ", format(RMSE_mr1, digits = 4))
+write(message, stdout())
+
+```
+
+> RMSE has been improved a bit.
+
+## Summary of RMSE
+
+
+   Algorithms                                    |   Root Mean Square Error (RMSE)
+-------------------------------------------------|---------------------------------
+   Guess with Average                            |       15.30
+                                                 |
+   Multiple Regression                           |
+  (with Age, BMI, SleepHrsNight,                 |       14.78
+  PhysActiveDays, AlcoholDay)                    |                      
+
+                                                               
+**Let's omit the most insignificant feature among those five : PhysActiveDays**  
+
+### Multiple Regression (2) 
+
+```{r eval=TRUE, echo=FALSE}
+
+fit2 <- lm(BPSysAve ~ Age + BMI +  SleepHrsNight + AlcoholDay, data = train_set)  
+summary(fit2)
+
+
+```
+
+
+
+**Let's predict the Blood Pressure, and Work out the RMSE**  
+
+```{r eval=TRUE, echo=FALSE}
+
+y_pred <- fit2$coef[1] + 
+  fit2$coef[2]*test_set$Age + 
+  fit2$coef[3]*test_set$BMI +
+  fit2$coef[4]*test_set$PhysActiveDays +
+  fit2$coef[5]*test_set$AlcoholDay
+
+RMSE_mr2 <- sqrt(mean((y_pred - test_set$BPSysAve)^2)) 
+
+message <- paste("\nRMSE of Multiple Regression (with Age, BMI, SleepHrsNight, AlcoholDay) is: ", format(RMSE_mr2, digits = 4))
+write(message, stdout())
+```
+> RMSE after excluding the least significant feature for multiple regression is just very similar.   
+
+
+## Summary of RMSE  
+
+
+   Algorithms                                    |   Root Mean Square Error (RMSE)
+-------------------------------------------------|---------------------------------
+   Guess with Average                            |       15.30
+                                                 |
+   Multiple Regression                           |
+  (with Age, BMI, SleepHrsNight,                 |       14.78
+  PhysActiveDays, AlcoholDay)                    |                      
+                                                 |
+   Multiple Regression                           |       14.76
+  (with Age, BMI, SleepHrsNight                  |
+  AlcoholDay)                                    |                     
+
+
+
+**Next, we try Keras Artificial Neuron Network (Keras ANN)**   
+
+#### Taking the findings of both the correlation plots and multiple linear regression into account, Age, BMI, SleepHrsNight, AlcoholDay are kept as the relevant features for the analysis.    
+
+ 
+
+
+## (2) Keras ANN
+
+##### Data Preparation
+
+```{r eval=TRUE, echo=FALSE}
+
+#library(dplyr)
+#select <- dplyr::select
+
+female3065_nona <- female3065_nona_original
+
+# Get Rid of Some Obvious overweight or underweight.
+female3065_nona <- female3065_nona %>% 
+  select("Age", "BMI", "SleepHrsNight", "AlcoholDay", "BPSysAve")  %>%  # 
+  #filter(between(BMI,18,40)) %>%
+  na.omit()
+
+#head(female3065_nona) 
+dim(female3065_nona) #1355 --> after exclude extreme BMI, 1210
+
+```
+
+**Neural network are very sensitive to non-normalized data, we need to normalize**  
+
+#### Max-Min Normalization 
+
+```{r eval=TRUE, echo=FALSE}
+
+normalize <- function(x) {
+  min(x)
+  max(x)
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+maxmin_female <- as.data.frame(lapply(female3065_nona, normalize))
+attach(maxmin_female)
+maxmin_female<-as.matrix(maxmin_female)
+
+#head(maxmin_female)
+#dim(maxmin_female)
+
+library(caret)
+set.seed(1234)
+
+
+#The train-test set is split 90/10 due to relatively small dataset (~1300).
+indexx <- sample(2, nrow(maxmin_female), replace=TRUE, prob = c(0.9,0.1))
+#head(indexx)
+
+X_train <- maxmin_female[indexx==1, 1:4]  #4
+X_test <- maxmin_female[indexx==2, 1:4]
+y_train <- maxmin_female[indexx==1, 5]
+y_test <- maxmin_female[indexx==2, 5]
+```
+
+#### The normalized train_set and test_set (90:10)   
+
+
+
+```{r eval=TRUE, echo=FALSE}
+message <- paste("train_set :")
+write(message, stdout())
+message <- paste("X_train :")
+write(message, stdout())
+head(X_train)
+dim(X_train)
+message <- paste("\ny_train :")
+write(message, stdout())
+head(y_train)
+```
+
+```{r eval=TRUE, echo=FALSE}
+
+message <- paste("test_set :")
+write(message, stdout())
+message <- paste("X_test :")
+write(message, stdout())
+head(X_test)
+dim(X_test)
+message <- paste("\ny_test :")
+write(message, stdout())
+head(y_test)
+```
+
+**We use a Sequential Model**  
+
+
+> Initialize a sequential model: The first step is to initialize a sequential model with keras_model_sequential(), which is the beginning of our Keras model. The sequential model is composed of a linear stack of layers.  
+
+> Apply layers to the sequential model: Layers consist of the input layer, hidden layers and an output layer.   
+
+> The input layer is for data to formated correctly. The hidden layers and output layers are what controls the ANN inner workings.  
+
+> Hidden Layer(s): Hidden layer form the neural network nodes that enable non-linear activation using weights. We’ll add one hidden layer. The hidden layer is created using layer_dense(). We would apply units = 32 (estimated as below), which is the number of nodes. We’ll select kernel_initializer = "RandomNormal" and activation = "relu" for hidden layers. 
+
+> The number of hidden layers, units, kernel initializers and activation functions are parameters can be optimized for the best results.
+
+###### Input layer: Number of Features + 1  
+###### Hidden layer : Training Data Samples/(Factor * (Input Neurons + Output Neurons))  
+###### Output layer: 1  
+
+###### A factor of Scaling Factor is set in this case, the purpose of the factoris to prevent overfitting.    
+###### A factor can take a value between 5 and 10. With 5 neurons in the input layer, 1 neuron in the output layer and ~1000 entries in the training set:    
+  
+###### The hidden layer is assigned 1200/((5 TO 10)*(5+1)) = (20-40) neurons.   
+###### We would choose between 20-40 nodes. With several trials, 32 is the most performing
+
+###### Dropout in each layer is used to avoid overfitting.  
+
+model <- keras_model_sequential() 
+
+
+model %>%  
+  layer_dense(units = 5, activation = 'relu', kernel_initializer='RandomNormal', input_shape = c(4)) %>%  
+  layer_dropout(0.1) %>%  
+  layer_dense(units = 32, activation = 'relu', kernel_initializer='RandomNormal') %>%  
+  layer_dropout(0.1) %>%  
+  layer_dense(units = 1, activation = 'linear', kernel_initializer='RandomNormal')  
+  
+  
+  
+```{r eval=TRUE, echo=FALSE}
+
+# Start RUN here
+
+library(keras)
+
+model <- keras_model_sequential() 
+model %>% 
+  layer_dense(units = 5, activation = 'relu', kernel_initializer='RandomNormal', input_shape = c(4)) %>% #4
+  layer_dropout(0.1) %>%
+  layer_dense(units = 32, activation = 'relu', kernel_initializer='RandomNormal') %>%
+  layer_dropout(0.1) %>%
+  layer_dense(units = 1, activation = 'linear', kernel_initializer='RandomNormal')
+summary(model)
+```
+
+
+> Optimizer: Adam realizes the benefits of both AdaGrad and RMSProp.  
+> As from the following reference, Instead of adapting the parameter learning rates based on the average first moment (the mean) as in RMSProp, Adam also makes use of the average of the second moments of the gradients (the uncentered variance).  
+> https://machinelearningmastery.com/adam-optimization-algorithm-for-deep-learning/  
+> Optimizing MSE is same as optimizing RMSE.    
+
+
+model %>% compile(  
+  loss = 'mean_squared_error',   
+  optimizer = 'adam',  
+  metrics = c('mse')   
+)
+
+
+
+```{r eval=TRUE, echo=FALSE}
+
+model %>% compile(
+  loss = 'mean_squared_error',  #mean_absolute_error, #mean_squared_error  #mean_squared_logarithmic_error
+  optimizer = 'adam',  
+  metrics = c('mse'),
+)
+
+```
+
+> mean_squared_error is used because it is suitable for target value having outliners.  
+
+> We can see that the model converged reasonably quickly and both train and test performance remained equivalent (in around episode 7). The performance and convergence behavior of the model suggest that mean squared error is a good match for a neural network used this problem.  
+
+> We use the fit() function to run the ANN on our training data. The object is our model, and x and y are our training data in matrix and numeric vector forms, respectively. The batch_size = 50 sets the number samples per gradient update within each epoch. We set epochs = 35 to control the number training cycles. Typically we want to keep the batch size high since this decreases the error within each training cycle (epoch). We also want epochs to be large, which is important in visualizing the training history.   
+
+> We put validation_split = 0.2 to include 20% of the data for model validation, due to the small dataset size.   
+
+```{r eval=TRUE, echo=FALSE}
+
+library(caret)
+set.seed(1234)
+
+history <- model %>% fit(
+  X_train, y_train, 
+  epochs = 35, batch_size = 50, 
+  validation_split = 0.2,
+)
+
+plot(history)
+
+```
+
+
+
+
+
+
+```{r eval=TRUE, echo=TRUE, results='hide'}
+
+model %>% evaluate(X_test, y_test)
+pred <- data.frame(y = predict(model, as.matrix(X_test)))
+
+predicted = pred$y * abs(diff(range(female3065_nona$BPSysAve))) + min(female3065_nona$BPSysAve)
+actual = y_test * abs(diff(range(female3065_nona$BPSysAve))) + min(female3065_nona$BPSysAve)
+
+
+```
+
+
+
+#### calculate the RMSE
+
+```{r eval=TRUE, echo=FALSE}
+
+# install.packages("MLmetrics")
+library(MLmetrics)
+#MAPE(predicted, actual) 
+
+RMSE(predicted, actual)
+
+
+RMSE_nn <- RMSE(predicted, actual)
+
+message <- paste("RMSE of Keras ANN (with Age, BMI, SleepHrsNight, AlcoholDay) is: ", format(RMSE_nn, digits = 4))
+write(message, stdout())
+
+```
+
+> We have tried to add one more layers and change the number of node, batch size, the above parameters seems being optimized.
+
+
+## Summary of RMSE  
+
+
+   Algorithms                                    |   Root Mean Square Error (RMSE)
+-------------------------------------------------|---------------------------------
+   Guess with Average                            |       15.30
+                                                 |
+   Multiple Regression                           |
+  (with Age, BMI, SleepHrsNight,                 |       14.78
+  PhysActiveDays, AlcoholDay)                    |                      
+                                                 |
+   Multiple Regression                           |       14.76
+  (with Age, BMI, SleepHrsNight                  |
+  AlcoholDay)                                    |                     
+                                                 |                   
+  Keras Artificial Neuron Network                |       13.52
+  (with Age, BMI,                                |
+  SleepHrsNight, AlcoholDay)                     |                     
+
+
+## Conclusion  
+
+> Different algorithms for Blood Pressure Prediction have been worked out and compared.  
+
+> Keras ANN is found to be the most performing algorithm having the least RMSE 13.52. 
+
+### Further Improvement Approach  
+
+* Excluding outliners -- such as seriously underweight, obese person, or person on medication, etc. This is because their blood pressure might behave very abnormal. The above program is re-run by filtering seriously underweight and obese person:
+
+  + Get Rid of Some Obvious overweight or underweight.
+  + Add a filter :  filter(between(BMI,18,40)) %>%   to the data set
+  + Decrease the number of node in hidden layers due to smaller dataset by excluding extreme BMI users
+
+```{r eval=TRUE, echo=FALSE, results='hide'}
+
+library(dplyr)
+select <- dplyr::select
+
+female3065_nona <- female3065_nona_original
+
+# Get Rid of Some Obvious overweight or underweight.
+female3065_nona <- female3065_nona %>% 
+  select("Age", "BMI", "SleepHrsNight", "AlcoholDay", "BPSysAve")  %>%  #"SleepHrsNight", 
+  filter(between(BMI,18,40)) %>%
+  na.omit()
+
+#head(female3065_nona) 
+dim(female3065_nona) #1355 -->1210
+
+maxmin_female <- as.data.frame(lapply(female3065_nona, normalize))
+attach(maxmin_female)
+maxmin_female<-as.matrix(maxmin_female)
+
+#head(maxmin_female)
+#dim(maxmin_female)
+
+
+library(caret)
+set.seed(0) 
+
+#The train-testing set is split 90/10 for small size database (~1200).
+indexx <- sample(2, nrow(maxmin_female), replace=TRUE, prob = c(0.9,0.1))
+#head(indexx)
+
+X_train <- maxmin_female[indexx==1, 1:4]  #4
+X_test <- maxmin_female[indexx==2, 1:4]
+y_train <- maxmin_female[indexx==1, 5]
+y_test <- maxmin_female[indexx==2, 5]
+
+message <- paste("train_set :")
+write(message, stdout())
+head(X_train)
+dim(X_train)
+
+message <- paste("test_set :")
+write(message, stdout())
+head(X_test)
+dim(X_test)
+head(y_test)
+
+
+# Start RUN here
+# 1100/(5-10)*(5+1) = 18-36 vs 20-40
+library(keras)
+
+model2 <- keras_model_sequential() 
+model2 %>% 
+  layer_dense(units = 5, activation = 'relu', kernel_initializer='RandomNormal', input_shape = c(4)) %>% #4
+  layer_dropout(0.2) %>%
+  layer_dense(units = 20, activation = 'relu', kernel_initializer='RandomNormal') %>%
+  layer_dropout(0.2) %>%
+  layer_dense(units = 1, activation = 'linear', kernel_initializer='RandomNormal')
+summary(model2)
+
+
+model2 %>% compile(
+  loss = 'mean_squared_error',  
+  optimizer = 'adam',  
+  metrics = c('mse')  
+)
+
+
+history <- model2 %>% fit(
+  X_train, y_train, 
+  epochs = 35, batch_size = 50, 
+  validation_split = 0.2
+)
+
+
+model2 %>% evaluate(X_test, y_test)
+pred <- data.frame(y = predict(model2, as.matrix(X_test)))
+
+predicted = pred$y * abs(diff(range(female3065_nona$BPSysAve))) + min(female3065_nona$BPSysAve)
+actual = y_test * abs(diff(range(female3065_nona$BPSysAve))) + min(female3065_nona$BPSysAve)
+
+#set.seed(755)
+
+# install.packages("MLmetrics")
+library(MLmetrics)
+#MAPE(predicted, actual) 
+
+RMSE(predicted, actual)
+
+
+```
+
+
+```{r eval=TRUE, echo=FALSE}
+RMSE_nn2 <- RMSE(predicted, actual)
+
+message <- paste("\nRMSE of Keras ANN (with Age, BMI, SleepHrsNight, AlcoholDay) (excluding extreme BMI) is: ", format(RMSE_nn2, digits = 4))
+write(message, stdout())
+
+```
+
+
+
+
+   Algorithms                                    |   Root Mean Square Error (RMSE)
+-------------------------------------------------|---------------------------------
+   Guess with Average                            |       15.30
+                                                 |
+   Multiple Regression                           |
+  (with Age, BMI, SleepHrsNight,                 |       14.78
+  PhysActiveDays, AlcoholDay)                    |                      
+                                                 |
+   Multiple Regression                           |       14.76
+  (with Age, BMI, SleepHrsNight                  |
+  AlcoholDay)                                    |                     
+                                                 |                   
+  Keras Artificial Neuron Network                |       13.52
+  (with Age, BMI,                                |
+  SleepHrsNight, AlcoholDay)                     |                     
+                                                 |                   
+  Keras Artificial Neuron Network  2             |       12.42
+  (with Age, BMI,                                |
+  SleepHrsNight, AlcoholDay)                     |
+  (exclude extreme BMI)                          |    
+
+* .
+  + Keras ANN is now improved with the RMSE of 12.42. ~12mmHg different is somehow be reasonable for blood pressure prediction. A person may have ~10mmHg different from day time to night time.   
+
+### There could also be other approach to improve the algorithms:  
+
+* Principle Component Analysis (PCA) -- there are still other useful features on the dataset (> 70 features) that have not yet been taken in accounts. Including more useful features would improve the prediction, but also increase the complexity of the machine learning or deep learning. PCA is a common approaches to handle high dimension dataset, and should be a way to improve the RMSE performance.  
+
+* Collecting larger dataset -- needless to say this help to generalize further the algorithms.   
+
+* Group user into finer Age groups -- Right now we use 30 to 65 years old for a easy analysis. However, factors affecting blood pressure of ~30 years old female could be very differently with a ~50 years old female.
+
+### Final Words:
+
+> Again, our aim is to predict Blood Pressure with HANDY information, such as Age, BMI, SleepHrsNight, AlcoholDay, so a person get know their blood pressure instantly without using a device or without going to a clinic.  
+
+> Blood Pressure is an useful indicator of a person health. People with comparatively high blood pressure (> 120 mmHg) should start to adopt a health lifestyle and pay attention to their health before getting into chronic illness.  
+
+> Measuring Blood Pressure seems to be easy by using home-use gauge nowsadays, but algorithms can be developed similary way to predict Fasting Blood Glucose, Cholesterol, Uric Acide, Triglycerides, etc. They are all user indicators for predicting health of a user. It is a good way to reduce population's chronic illnesses.  
+
+
+
+
+
+
+
+
+
