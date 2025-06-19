@@ -1,6 +1,6 @@
 ---
 title: "BloodPressurePredict.Rmd"
-author: "WONG Yuen Wah"
+author: "WONG Yuen Wah (Amice) "
 date: "16 July 2021"
 output:
   word_document: 
@@ -53,7 +53,7 @@ library(readr)
 
 ```{r echo=FALSE, results="hide", include=FALSE}
 
-#setwd("~/Documents/Bachcode/Course/Data Science edx/nhanes homework")
+#setwd("~/Documents/.../nhanes")
 #NHANES <- read_csv("NHANES.csv")
 NHANES <- read.csv(file = 'https://raw.githubusercontent.com/Shreyas3108/house-price-prediction/master/kc_house_data.csv')
 ```
